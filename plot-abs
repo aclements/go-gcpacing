@@ -1,6 +1,7 @@
 #!/bin/sh
 
-# Perform a single simulation and plots the results in Gnuplot
+# Perform a single simulation and plot the results as absolute heap
+# sizes and utilization ratios in Gnuplot
 
 set -e
 
