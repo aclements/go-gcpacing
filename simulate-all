@@ -11,7 +11,7 @@ for w_true in 0.00625 0.0125 0.25; do
     for pointerScanNS in 1 10 20; do
         for allocPeriodNS in 10 100 1000; do
             echo -n .
-            python3 gcpacing2.py --w_true $w_true --pointerScanNS $pointerScanNS --allocPeriodNS $allocPeriodNS >> $OUT
+            ./simulate --w_true $w_true --pointerScanNS $pointerScanNS --allocPeriodNS $allocPeriodNS >> $OUT
             echo >> $OUT
             echo >> $OUT
         done

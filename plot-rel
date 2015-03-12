@@ -10,7 +10,7 @@ if [ "$1" = -h -o "$1" = --help ]; then
     exit
 fi
 
-python3 simulate.py "$@" > /tmp/gcpacing.dat
+./simulate "$@" > /tmp/gcpacing.dat
 gnuplot --persist -e "\
 set multiplot layout 2, 1;
 set lmargin at screen 0.15;
