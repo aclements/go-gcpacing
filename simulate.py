@@ -7,19 +7,51 @@
 
 import sys
 import argparse
+import collections
+import re
 import numpy.random
 
 NS = 1e-9
 ptrSize = 8
 
-argp = argparse.ArgumentParser()
+class N(collections.namedtuple('N', 'mu sigma')):
+    def val(self, state=numpy.random):
+        return state.normal(self.mu, self.sigma)
+
+    def __str__(self):
+        return '%g±%g%%' % (self.mu, 100*self.sigma/self.mu)
+
+    @classmethod
+    def parser(cls, defaultPct):
+        def parse(s):
+            m = re.match(r'([-0-9.e]+)(?:(?:±|\+-?|-)([0-9.e]+)(%?))?', s)
+            if not m:
+                raise argparse.ArgumentTypeError('expected <float>[+-<float>[%]]')
+            mu = float(m.group(1))
+            if m.group(2) is not None:
+                sigma = float(m.group(2))
+                if m.group(3):
+                    sigma = mu * (sigma / 100)
+            else:
+                sigma = mu * defaultPct
+            return cls(mu, sigma)
+        return parse
+
+argp = argparse.ArgumentParser(
+    epilog='''DIST arguments take a normal distribution in the form
+    <float>[+-<float>[%]] where the first number gives the mean and
+    the second gives the standard deviation, optionally as a
+    percentage of the mean.  If the second is omitted, it uses the
+    same percentage standard deviation as the default value.''')
 argp.add_argument('--GOGC', metavar='PCT', type=float, default=100,
                   help='GOGC setting (default %(default)s)')
 argp.add_argument('--pointerScanNS', metavar='NS', type=float, default=2,
                   help='Nanoseconds to scan a pointer (default %(default)s)')
-argp.add_argument('--allocPeriodNS', metavar='NS', type=float, default=100,
+argp.add_argument('--allocPeriodNS', metavar='DIST',
+                  type=N.parser(0.2), default=N(100, 100 * 0.2),
                   help='Nanoseconds between allocations (default %(default)s)')
-argp.add_argument('--w_true', metavar='RATIO', type=float, default=0.1/ptrSize,
+argp.add_argument('--w_true', metavar='DIST',
+                  type=N.parser(0.01), default=N(0.1/ptrSize, 0.1/ptrSize*0.01),
                   help='True work ratio (default %(default)s)')
 argp.add_argument('--u_mut', metavar='UTIL', type=float, default=1,
                   help='Mutator CPU utilization assuming no GC (default %(default)s)')
@@ -50,8 +82,6 @@ H_m_prev = H_m_initial = 512*1024
 
 # Simulation variables
 pointerScanSecs = args.pointerScanNS * NS
-w_true = args.w_true
-meanAllocPeriodSecs = args.allocPeriodNS * NS
 
 def reachableBytes():
     """How many bytes of heap are reachable."""
@@ -64,7 +94,7 @@ reachableBytes.state = numpy.random.RandomState(numpy.random.randint(10000))
 
 def workRatio():
     """Pointer/reachable byte ratio."""
-    return max(0.001, numpy.random.normal(w_true, 0.0001))
+    return max(0.001, args.w_true.val())
 
 def allocBytes():
     """Bytes per allocation."""
@@ -73,7 +103,7 @@ def allocBytes():
 
 def allocPeriodSecs():
     """Seconds between allocations."""
-    return max(0, numpy.random.normal(meanAllocPeriodSecs, meanAllocPeriodSecs / 5))
+    return max(0, args.allocPeriodNS.val() * NS)
 
 #
 # Simulator
@@ -145,7 +175,7 @@ def concurrentPhase():
     u_a_with_idle = (gcTime + gcTime_idle) / now
     return H_a, u_a, u_a_with_idle, W_a, H_m
 
-print("# h_g=%g w_true=%g pointerScanTime=%gns allocPeriod=%gns u_mut=%g" % (h_g, w_true, pointerScanSecs/NS, meanAllocPeriodSecs/NS, u_mut))
+print("# h_g=%g w_true=%g pointerScanTime=%gns allocPeriod=%gns u_mut=%g" % (h_g, args.w_true.mu, pointerScanSecs/NS, args.allocPeriodNS.mu, u_mut))
 print("n\tH_m(n-1)\tH_t\tH_a\tH_g\tW_a\tW_e\tw\tu_a\tu_g\tu_a_with_idle")
 for n in range(20):
     H_T = H_m_prev * (1 + h_T)
