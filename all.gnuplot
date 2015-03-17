@@ -1,6 +1,10 @@
 set term wxt size 600,600
+
 #set term svg size 1000,1000 fsize 16 lw 2
 #set output "all.svg"
+
+#set term pngcairo size 700,700 lw 2
+#set output "all.png"
 
 
 mp_startx=0.18                  # Left edge of col 0 plot area
