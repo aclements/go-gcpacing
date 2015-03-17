@@ -3,12 +3,13 @@ set term wxt size 600,600
 #set output "all.svg"
 
 
-mp_startx=0.15                  # Left edge of col 0 plot area
+mp_startx=0.18                  # Left edge of col 0 plot area
 mp_starty=0.1                   # Top of row 0 plot area
-mp_width=0.825                  # Total width of plot area
+mp_width=0.8                    # Total width of plot area
 mp_height=0.8                   # Total height of plot area
 mp_colgap=0.04                  # Gap between columns
 mp_rowgap=0.04                  # Gap between rows
+mp_labelheight=0.03             # Height of row/col labels
 # The screen coordinate of the left edge of column col
 mp_left(col)=mp_startx + col*((mp_width+mp_colgap)/real(mp_ncols))
 # The screen coordinate of the top edge of row row
@@ -40,12 +41,12 @@ mpNextBot = '\
 
 mpColLabel(lbl) = \
     sprintf('set object 1 rect center screen mp_left(mp_nplot%%mp_ncols)+mp_cwidth/2,screen 0.93 size screen mp_cwidth, char 1 back fc rgb "grey" lw 0; set label 1 "%s" at screen mp_left(mp_nplot%%mp_ncols)+mp_cwidth/2,screen 0.93 center front',lbl)
-mpRowLabel(lbl) = \
-    sprintf('set object 2 rect center screen 0.02,screen mp_top(mp_nplot/mp_ncols)+mp_cheight/2 size char 2, screen -mp_cheight back fc rgb "grey" lw 0; set label 2 "%s" at screen 0.02,screen mp_top(mp_nplot/mp_ncols)+mp_cheight/2 center rotate front',lbl)
-mpRowTopLabel(lbl) = \
-    sprintf('set object 3 rect center screen 0.05,screen mp_top(mp_nplot/mp_ncols)+mp_cheight/4 size char 2, screen -mp_cheight*0.48 back fc rgb "grey" lw 0; set label 3 "%s" at screen 0.05,screen mp_top(mp_nplot/mp_ncols)+mp_cheight/4 center rotate front',lbl)
-mpRowBotLabel(lbl) = \
-    sprintf('set object 3 rect center screen 0.05,screen mp_top(mp_nplot/mp_ncols)+mp_cheight*3/4 size char 2, screen -mp_cheight*0.48 back fc rgb "grey" lw 0; set label 3 "%s" at screen 0.05,screen mp_top(mp_nplot/mp_ncols)+mp_cheight*3/4 center rotate front',lbl)
+mpRowSpanLabel(depth, row1, row2, lbl) = \
+    sprintf('set object %d rect from screen %g, screen %g to screen %g, screen %g back fc rgb "grey" lw 0;', depth+100, mp_labelheight*depth, mp_top(row1), mp_labelheight*(depth+0.9), mp_top(row2)+mp_cheight) . \
+    sprintf('set label %d "%s" at screen %g, screen %g center rotate front', depth+100, lbl, mp_labelheight*(depth+0.45), (mp_top(row1)+mp_top(row2)+mp_cheight)/2)
+mpRowLabel(depth, lbl) = mpRowSpanLabel(depth, mp_nplot/mp_ncols, mp_nplot/mp_ncols, lbl)
+mpRowTopLabel(depth, lbl) = mpRowSpanLabel(depth, mp_nplot/mp_ncols, mp_nplot/mp_ncols-0.5, lbl)
+mpRowBotLabel(depth, lbl) = mpRowSpanLabel(depth, mp_nplot/mp_ncols+0.5, mp_nplot/mp_ncols, lbl)
 
 
 #
@@ -59,9 +60,12 @@ set key off
 set offsets 0, 0, graph 0.1, graph 0.1
 
 eval mpSetup(3, 3)
+w_true="0.0125"
+#eval mpSetup(3, 9)  # Full range of w_true
+#do for [w_true in "0.00625 0.0125 0.25"] {
 do for [pointerScanNS in "1 10 20"] {
     do for [allocPeriodNS in "10 100 1000"] {
-        idx=sprintf("h_g=1 w_true=0.0125 pointerScanTime=%sns allocPeriod=%sns", pointerScanNS, allocPeriodNS)
+        idx=sprintf("h_g=1 w_true=%s pointerScanTime=%sns allocPeriod=%sns", w_true, pointerScanNS, allocPeriodNS)
 
         eval mpNextTop
 
@@ -70,8 +74,11 @@ do for [pointerScanNS in "1 10 20"] {
             eval mpColLabel(sprintf("allocPeriod %sns", allocPeriodNS))
         }
         # Left labels
+        if (mp_nplot%9 == 0) {
+            eval mpRowSpanLabel(0, mp_nplot/mp_ncols, mp_nplot/mp_ncols+2, sprintf("w_true %s", w_true))
+        }
         if (mp_nplot%mp_ncols == 0) {
-            eval mpRowLabel(sprintf("pointerScan %sns", pointerScanNS))
+            eval mpRowLabel(1, sprintf("pointerScan %sns", pointerScanNS))
         }
 
         set xtics 5 format ""
@@ -86,7 +93,7 @@ do for [pointerScanNS in "1 10 20"] {
         #      '' index idx using 'H_a', \
         #      '' index idx using 'H_g'
 
-        if (mp_nplot%mp_ncols == 0) { eval mpRowTopLabel("heap") }
+        if (mp_nplot%mp_ncols == 0) { eval mpRowTopLabel(2, "heap") }
 
         set yrange [0:1.3]
         set ytics format "%.1f" (0, 1, 2)
@@ -99,7 +106,7 @@ do for [pointerScanNS in "1 10 20"] {
 
         eval mpNextBot
 
-        if (mp_nplot%mp_ncols == 0) { eval mpRowBotLabel("CPU") }
+        if (mp_nplot%mp_ncols == 0) { eval mpRowBotLabel(2, "CPU") }
 
         if (mp_nplot/mp_ncols == mp_nrows-1) { set xtics 5 format "% g"; set xlabel "cycle" }
 
@@ -111,6 +118,7 @@ do for [pointerScanNS in "1 10 20"] {
              '' index idx using 'u_g'
     }
 }
+#}
 
 # null key plot
 unset origin
