@@ -8,9 +8,9 @@ set term wxt size 600,600
 
 
 mp_startx=0.18                  # Left edge of col 0 plot area
-mp_starty=0.1                   # Top of row 0 plot area
+mp_starty=0.15                  # Top of row 0 plot area
 mp_width=0.8                    # Total width of plot area
-mp_height=0.8                   # Total height of plot area
+mp_height=0.75                  # Total height of plot area
 mp_colgap=0.04                  # Gap between columns
 mp_rowgap=0.04                  # Gap between rows
 mp_labelheight=0.03             # Height of row/col labels
@@ -44,7 +44,7 @@ mpNextBot = '\
     set bmargin at screen mp_top(mp_nplot/mp_ncols)+mp_cheight'
 
 mpColLabel(lbl) = \
-    sprintf('set object 1 rect center screen mp_left(mp_nplot%%mp_ncols)+mp_cwidth/2,screen 0.93 size screen mp_cwidth, char 1 back fc rgb "grey" lw 0; set label 1 "%s" at screen mp_left(mp_nplot%%mp_ncols)+mp_cwidth/2,screen 0.93 center front',lbl)
+    sprintf('set object 1 rect center screen mp_left(mp_nplot%%mp_ncols)+mp_cwidth/2,screen 0.88 size screen mp_cwidth, char 1 back fc rgb "grey" lw 0; set label 1 "%s" at screen mp_left(mp_nplot%%mp_ncols)+mp_cwidth/2,screen 0.88 center front',lbl)
 mpRowSpanLabel(depth, row1, row2, lbl) = \
     sprintf('set object %d rect from screen %g, screen %g to screen %g, screen %g back fc rgb "grey" lw 0;', depth+100, mp_labelheight*depth, mp_top(row1), mp_labelheight*(depth+0.9), mp_top(row2)+mp_cheight) . \
     sprintf('set label %d "%s" at screen %g, screen %g center rotate front', depth+100, lbl, mp_labelheight*(depth+0.45), (mp_top(row1)+mp_top(row2)+mp_cheight)/2)
@@ -59,6 +59,7 @@ mpRowBotLabel(depth, lbl) = mpRowSpanLabel(depth, mp_nplot/mp_ncols+0.5, mp_nplo
 
 GB = 1024*1024*1024
 set style data lines
+set style fill solid 0.25 noborder;
 set tics nomirror
 set key off
 set offsets 0, 0, graph 0.1, graph 0.1
@@ -118,8 +119,11 @@ do for [pointerScanNS in "1 10 20"] {
         set ytics format "% g" ("0%%" 0, "100%%" 1)
         if (mp_nplot%mp_ncols != 0) { set ytics format "" (0, 1) }
 
-        plot 'all.dat' index idx using 'u_a', \
-             '' index idx using 'u_g'
+        plot 'all.dat' index idx using 1:(column('u_assist')+column('u_bg')+column('u_idle')) title 'u_idle' w filledcurves x1, \
+             '' index idx using 1:(column('u_assist')+column('u_bg')) title 'u_bg' w filledcurves x1, \
+             '' index idx using 1:(column('u_assist')) title 'u_assist' w filledcurves x1, \
+             '' index idx using 1:'u_a' lt 1, \
+             '' index idx using 1:'u_g' lt 2
     }
 }
 #}
@@ -139,6 +143,11 @@ set bmargin at screen 0
 set tmargin at screen 1
 set key on horizontal center top
 
-plot NaN title 'achieved', NaN title 'goal', NaN title 'trigger'
+plot NaN lt 1 title 'achieved', \
+     NaN w filledcurves lt 3 title 'u_assist', \
+     NaN lt 2 title 'goal', \
+     NaN w filledcurves lt 2 title 'u_bg', \
+     NaN lt 3 title 'trigger', \
+     NaN w filledcurves lt 1 title 'u_idle'
 
 unset multiplot
