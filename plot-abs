@@ -12,14 +12,22 @@ fi
 
 ./simulate "$@" > /tmp/gcpacing.dat
 gnuplot --persist -e "\
+set for [lt=1:10] linetype lt lw 2;
 set multiplot layout 2, 1;
 set lmargin at screen 0.15;
+set style data lines;
 set xlabel '';
 set xtics format '';
 set ylabel 'Heap size';
-plot for [n=2:7] '/tmp/gcpacing.dat' using 1:n with lines lw 2 title col;
+plot '/tmp/gcpacing.dat' using 1:'H_m(n-1)', \
+     '' using 1:'H_t', \
+     '' using 1:'H_a', \
+     '' using 1:'H_g', \
+     '' using 1:'W_a', \
+     '' using 1:'W_e';
 set xlabel 'GC cycle';
 set xtics format '% g';
 set ylabel 'CPU';
-plot [*:*] [0:1] for [n=9:10] '' using 1:n with lines lw 2 title col;
+plot [*:*] [0:1] '/tmp/gcpacing.dat' using 1:'u_a', \
+     '' using 1:'u_g';
 unset multiplot"
