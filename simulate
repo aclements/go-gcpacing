@@ -119,7 +119,7 @@ def concurrentPhase():
     # Allocate and scan until we've done W_a scan work
     W_done = 0
     H_a = H_T
-    now = gcTime = gcTime_idle = 0
+    now = gcTime = gcTime_assist = gcTime_bg = gcTime_idle = 0
     credit = 0
     allocDelay = allocPeriodSecs()
     while True:
@@ -139,6 +139,7 @@ def concurrentPhase():
                 W_background = allocDelay / pointerScanSecs * u_background
                 W_done += W_background
                 credit += W_background
+                gcTime_bg += allocDelay * u_background
                 gcTime += allocDelay * u_background
 
             if u_idle > 0:
@@ -166,17 +167,19 @@ def concurrentPhase():
         A -= steal
         W_done += A
         assistTime = pointerScanSecs * A
+        gcTime_assist += assistTime
         gcTime += assistTime
         now += assistTime
 
         allocDelay = allocPeriodSecs()
 
-    u_a = gcTime / now
-    u_a_with_idle = (gcTime + gcTime_idle) / now
-    return H_a, u_a, u_a_with_idle, W_a, H_m
+    u_assist = gcTime_assist / now
+    u_bg = gcTime_bg / now
+    u_idle = gcTime_idle / now
+    return H_a, u_assist, u_bg, u_idle, W_a, H_m
 
 print("# h_g=%g w_true=%g pointerScanTime=%gns allocPeriod=%gns u_mut=%g" % (h_g, args.w_true.mu, pointerScanSecs/NS, args.allocPeriodNS.mu, u_mut))
-print("n\tH_m(n-1)\tH_t\tH_a\tH_g\tW_a\tW_e\tw\tu_a\tu_g\tu_a_with_idle")
+print("n\tH_m(n-1)\tH_t\tH_a\tH_g\tW_a\tW_e\tw\tu_a\tu_g\tu_assist\tu_bg\tu_idle")
 for n in range(20):
     H_T = H_m_prev * (1 + h_T)
     H_g = H_m_prev * (1 + h_g)
@@ -184,9 +187,10 @@ for n in range(20):
     W_e = w * H_m_prev            # New w definition
 
     # Simulate a concurrent cycle
-    H_a, u_a, u_a_with_idle, W_a, H_m = concurrentPhase()
+    H_a, u_assist, u_bg, u_idle, W_a, H_m = concurrentPhase()
+    u_a = u_assist + u_bg
 
-    print(n, H_m_prev, H_T, H_a, H_g, W_a*ptrSize, W_e*ptrSize, w, u_a, u_g, u_a_with_idle, sep='\t')
+    print(n, H_m_prev, H_T, H_a, H_g, W_a*ptrSize, W_e*ptrSize, w, u_a, u_g, u_assist, u_bg, u_idle, sep='\t')
     sys.stdout.flush()
 
     # Update heap trigger
