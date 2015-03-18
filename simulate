@@ -70,6 +70,8 @@ u_g = 0.25
 K_T = 0.5
 K_w = 0.75
 u_mut = args.u_mut
+gomaxprocs = 4
+schedQuantum = 1/10000          # Scheduler quantum in seconds
 
 # GC state variables carried between cycles
 w = w_initial = 0.1 * 1/ptrSize
@@ -78,7 +80,7 @@ h_T = 7/8
 # System state
 # The actual heap size doesn't matter much, as long as it's much
 # larger than the typical allocation.
-H_m_prev = H_m_initial = 512*1024
+H_m_prev = H_m_initial = 16*1024*1024
 
 # Simulation variables
 pointerScanSecs = args.pointerScanNS * NS
@@ -109,74 +111,128 @@ def allocPeriodSecs():
 # Simulator
 #
 
-def concurrentPhase():
-    # How much of the heap is reachable?
-    H_m = reachableBytes()
+class CycleSim:
+    def __init__(self):
+        # How much of the heap is reachable this cycle?
+        self.H_m = reachableBytes()
 
-    # How much scan work do we need to do to scan all reachable pointers?
-    W_a = H_m * workRatio()
+        # How much scan work do we need to do to scan all reachable pointers?
+        self.W_a = self.H_m * workRatio()
 
-    # Allocate and scan until we've done W_a scan work
-    W_done = 0
-    H_a = H_T
-    now = gcTime = gcTime_assist = gcTime_bg = gcTime_idle = 0
-    credit = 0
-    allocDelay = allocPeriodSecs()
-    while True:
-        # Alternate between background scanning and mutator assists.
-        if W_done >= W_a:
-            break
+        # Initial state
+        self.W_done = 0
+        self.H_a = H_T
+        self.bgCredit = 0
 
-        # Do background scanning until now+allocDelay, aim for u_g
-        # utilization at now+allocDelay.
-        if allocDelay > 0:
-            u_background = (u_g * (now + allocDelay) - gcTime) / allocDelay
-            u_background = max(u_background, 0)
+        # Times are all CPU time (gomaxprocs CPU seconds per wall second)
+        self.now = 0
+        self.gcTime = self.gcTime_assist = self.gcTime_bg = self.gcTime_idle = 0
 
-            u_idle = ((1 - u_mut - u_background) * (now + allocDelay) - (gcTime + gcTime_idle)) / allocDelay
+        self.allp = [PSim(self, i) for i in range(gomaxprocs)]
 
-            if u_background > 0:
-                W_background = allocDelay / pointerScanSecs * u_background
-                W_done += W_background
-                credit += W_background
-                gcTime_bg += allocDelay * u_background
-                gcTime += allocDelay * u_background
+    def done(self):
+        return self.W_done >= self.W_a
 
-            if u_idle > 0:
-                W_idle = allocDelay / pointerScanSecs * u_idle
-                W_done += W_idle
-                credit += W_idle
-                # Does *not* count against gcTime
-                gcTime_idle += allocDelay * u_idle
+    def simulate(self):
+        # Run schedule quanta, allocating and scanning until we've
+        # done W_a scan work.
+        quanta = 0
+        while not self.done():
+            # gcTime does *not* include idle scanning
+            self.gcTime = self.gcTime_assist + self.gcTime_bg
+            for p in self.allp:
+                p.simulate()
+            self.now += gomaxprocs * schedQuantum
+            quanta += 1
+        if quanta < 3:
+            # Since we don't simulate interleaving within a quantum,
+            # results are inaccurate if we didn't run enough quanta.
+            #
+            # TODO: Use discrete event simulation to interleave within
+            # a quantum, but still make scheduling decisions on
+            # quantum boundaries.
+            print('warning: cycle completed in %d quanta;'
+                  ' decrease schedQuantum or increase H_m_initial' % quanta,
+                  file=sys.stderr)
 
-            now += allocDelay
+        # Report results
+        u_assist = self.gcTime_assist / self.now
+        u_bg = self.gcTime_bg / self.now
+        u_idle = self.gcTime_idle / self.now
+        return self.H_a, u_assist, u_bg, u_idle, self.W_a, self.H_m
 
-        if W_done >= W_a:
-            break
+class PSim:
+    # Simulate one P. We treat each P as having one mutator G and one GC G.
 
-        # Do allocation (assume this is instantaneous).
-        alloc = allocBytes()
-        H_a += alloc
+    def __init__(self, cycleSim, i):
+        self.cycleSim = cycleSim
+        self.i = i
 
-        # Do assist work for allocation (assume this consumes 100% of
-        # the CPU during the assist and that background GC doesn't
-        # happen concurrently).
-        A = W_e/(H_g - H_T) * alloc
-        steal = min(A, credit)
-        credit -= steal
-        A -= steal
-        W_done += A
-        assistTime = pointerScanSecs * A
-        gcTime_assist += assistTime
-        gcTime += assistTime
-        now += assistTime
+        self.allocDelay = allocPeriodSecs()
+        self.assistTime = None
+        self.state = 'running'
 
-        allocDelay = allocPeriodSecs()
+    def simulate(self):
+        # Simulate this P for one schedQuantum
+        cs = self.cycleSim
 
-    u_assist = gcTime_assist / now
-    u_bg = gcTime_bg / now
-    u_idle = gcTime_idle / now
-    return H_a, u_assist, u_bg, u_idle, W_a, H_m
+        # If this P and all lower-numbered Ps were to run background
+        # GC, would u_a <= u_g at the end of the quantum?
+        u_a_if_bg = (cs.gcTime + (self.i + 1) * schedQuantum) / (cs.now + gomaxprocs * schedQuantum)
+        if u_a_if_bg <= u_g:
+            # Run background GC this quantum
+            W_bg = schedQuantum * pointerScanSecs
+            cs.W_done += W_bg
+            cs.bgCredit += W_bg
+            cs.gcTime_bg += schedQuantum
+            return
+
+        # Is this mutator idle this quantum?
+        if numpy.random.random() >= u_mut:
+            # Run idle GC this quantum
+            W_idle = schedQuantum * pointerScanSecs
+            cs.W_done += W_idle
+            cs.bgCredit += W_idle
+            cs.gcTime_idle += schedQuantum
+            return
+
+        # Otherwise, run the mutator for a quantum
+        left = schedQuantum
+        while left > 0 and not cs.done():
+            if self.state == 'running':
+                step = min(left, self.allocDelay)
+                self.allocDelay -= step
+                left -= step
+
+                if self.allocDelay <= 0:
+                    # Do allocation (assume this is instantaneous).
+                    alloc = allocBytes()
+                    cs.H_a += alloc
+
+                    # Compute assist work for this allocation
+                    A = W_e/(H_g - H_T) * alloc
+                    # Steal assist work if we can
+                    steal = min(A, cs.bgCredit)
+                    cs.bgCredit -= steal
+                    A -= steal
+                    # Compute the time it will take to do A assist work
+                    self.assistTime = A * pointerScanSecs
+                    # Switch to assisting
+                    self.state = 'assisting'
+            elif self.state == 'assisting':
+                step = min(left, self.assistTime)
+                self.assistTime -= step
+                left -= step
+
+                # Perform assist work for step seconds
+                cs.W_done += step / pointerScanSecs
+                cs.gcTime_assist += step
+
+                if self.assistTime <= 0:
+                    # Switch back to running and set up for the next
+                    # allocation.
+                    self.state = 'running'
+                    self.allocDelay = allocPeriodSecs()
 
 print("# h_g=%g w_true=%g pointerScanTime=%gns allocPeriod=%gns u_mut=%g" % (h_g, args.w_true.mu, pointerScanSecs/NS, args.allocPeriodNS.mu, u_mut))
 print("n\tH_m(n-1)\tH_t\tH_a\tH_g\tW_a\tW_e\tw\tu_a\tu_g\tu_assist\tu_bg\tu_idle")
@@ -187,7 +243,7 @@ for n in range(20):
     W_e = w * H_m_prev            # New w definition
 
     # Simulate a concurrent cycle
-    H_a, u_assist, u_bg, u_idle, W_a, H_m = concurrentPhase()
+    H_a, u_assist, u_bg, u_idle, W_a, H_m = CycleSim().simulate()
     u_a = u_assist + u_bg
 
     print(n, H_m_prev, H_T, H_a, H_g, W_a*ptrSize, W_e*ptrSize, w, u_a, u_g, u_assist, u_bg, u_idle, sep='\t')
