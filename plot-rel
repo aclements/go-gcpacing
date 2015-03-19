@@ -6,7 +6,7 @@
 set -e
 
 if [ "$1" = -h -o "$1" = --help ]; then
-    python3 simulate.py "$@"
+    ./simulate "$@"
     exit
 fi
 
