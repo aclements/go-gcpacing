@@ -71,7 +71,7 @@ K_T = 0.5
 K_w = 0.75
 u_mut = args.u_mut
 gomaxprocs = 4
-schedQuantum = 1/10000          # Scheduler quantum in seconds
+schedQuantum = 1/100          # Scheduler quantum in seconds
 
 # GC state variables carried between cycles
 w = w_initial = 0.1 * 1/ptrSize
@@ -114,6 +114,7 @@ def allocPeriodSecs():
 class CycleSim:
     def __init__(self):
         # How much of the heap is reachable this cycle?
+        # TODO: This and W_a should grow as the cycle progresses
         self.H_m = reachableBytes()
 
         # How much scan work do we need to do to scan all reachable pointers?
@@ -130,30 +131,30 @@ class CycleSim:
 
         self.allp = [PSim(self, i) for i in range(gomaxprocs)]
 
-    def done(self):
-        return self.W_done >= self.W_a
-
     def simulate(self):
-        # Run schedule quanta, allocating and scanning until we've
-        # done W_a scan work.
-        quanta = 0
-        while not self.done():
-            # gcTime does *not* include idle scanning
-            self.gcTime = self.gcTime_assist + self.gcTime_bg
+        # Move time forward, allocating and scanning until we've done
+        # W_a scan work. The 0.99.. is a fudge so we don't go into an
+        # infinite loop at the end because of rounding errors.
+        while self.W_done < self.W_a * 0.99999999:
+            workRate, t = 0, float('inf')
             for p in self.allp:
-                p.simulate()
-            self.now += gomaxprocs * schedQuantum
-            quanta += 1
-        if quanta < 3:
-            # Since we don't simulate interleaving within a quantum,
-            # results are inaccurate if we didn't run enough quanta.
-            #
-            # TODO: Use discrete event simulation to interleave within
-            # a quantum, but still make scheduling decisions on
-            # quantum boundaries.
-            print('warning: cycle completed in %d quanta;'
-                  ' decrease schedQuantum or increase H_m_initial' % quanta,
-                  file=sys.stderr)
+                workRate1, t1 = p.next()
+                workRate += workRate1
+                t = min(t, t1)
+            # If the work rate will put us over the actual work during
+            # this step, back off the step time.
+            if self.W_done + t * workRate > self.W_a:
+                t = (self.W_a - self.W_done) / workRate
+            # Step time forward by t for all Ps.
+            for p in self.allp:
+                p.simulate(t)
+            self.now += t * gomaxprocs
+            # gcTime does *not* include idle scanning.
+            self.gcTime = self.gcTime_assist + self.gcTime_bg
+            # Now that all Ps are at the same time, perform state
+            # transitions.
+            for p in self.allp:
+                p.transition()
 
         # Report results
         u_assist = self.gcTime_assist / self.now
@@ -162,77 +163,114 @@ class CycleSim:
         return self.H_a, u_assist, u_bg, u_idle, self.W_a, self.H_m
 
 class PSim:
-    # Simulate one P. We treat each P as having one mutator G and one GC G.
+    # Simulate one P. We treat each P as having one mutator G and one
+    # GC G. It gets interrupted every schedQuantum seconds.
 
     def __init__(self, cycleSim, i):
         self.cycleSim = cycleSim
         self.i = i
 
-        self.allocDelay = allocPeriodSecs()
-        self.assistTime = None
-        self.state = 'running'
+        # running:   in user code for next runTime seconds, preemptible
+        # assisting: in mutator assist for assistTime seconds, non-preemptible
+        # bggc:      in background GC until preempt
+        # idlegc:    in idle GC until preempt
+        self.state = 'bggc'
 
-    def simulate(self):
-        # Simulate this P for one schedQuantum
+        self.preemptTime = numpy.random.random() * schedQuantum
+        self.preemptTime = 0
+        self.runTime = allocPeriodSecs()
+        self.assistTime = None
+
+    def next(self):
+        # Return the current work rate and the time of the next event on this P.
+        if self.state == 'running':
+            return 0, max(0, min(self.preemptTime, self.runTime))
+        if self.state == 'assisting':
+            return 1/pointerScanSecs, max(0, self.assistTime)
+        if self.state == 'bggc' or self.state == 'idlegc':
+            return 1/pointerScanSecs, max(0, self.preemptTime)
+
+    def simulate(self, t):
+        # Simulate this P for t seconds. There will be no state
+        # changes during this time. This must not depend on anything
+        # that other Ps are doing because time is stepped forward one
+        # P at a time and hence may not be in sync.
         cs = self.cycleSim
 
-        # If this P and all lower-numbered Ps were to run background
-        # GC, would u_a <= u_g at the end of the quantum?
-        u_a_if_bg = (cs.gcTime + (self.i + 1) * schedQuantum) / (cs.now + gomaxprocs * schedQuantum)
-        if u_a_if_bg <= u_g:
-            # Run background GC this quantum
-            W_bg = schedQuantum * pointerScanSecs
+        if self.state == 'running':
+            assert self.runTime >= t
+            self.runTime -= t
+        elif self.state == 'assisting':
+            # Perform assist work for t seconds
+            W_assist = t / pointerScanSecs
+            cs.W_done += W_assist
+            cs.gcTime_assist += t
+
+            assert self.assistTime >= t
+            self.assistTime -= t
+        elif self.state == 'bggc':
+            W_bg = t / pointerScanSecs
             cs.W_done += W_bg
             cs.bgCredit += W_bg
-            cs.gcTime_bg += schedQuantum
-            return
-
-        # Is this mutator idle this quantum?
-        if numpy.random.random() >= u_mut:
-            # Run idle GC this quantum
-            W_idle = schedQuantum * pointerScanSecs
+            # TODO: The real code only flushes this at preemption,
+            # which is lower fidelity.
+            cs.gcTime_bg += t
+        elif self.state == 'idlegc':
+            W_idle = t / pointerScanSecs
             cs.W_done += W_idle
             cs.bgCredit += W_idle
-            cs.gcTime_idle += schedQuantum
-            return
+            cs.gcTime_idle += t
+        else:
+            raise AssertionError('bad state %r' % self.state)
 
-        # Otherwise, run the mutator for a quantum
-        left = schedQuantum
-        while left > 0 and not cs.done():
-            if self.state == 'running':
-                step = min(left, self.allocDelay)
-                self.allocDelay -= step
-                left -= step
+        self.preemptTime -= t   # May go negative during assisting
 
-                if self.allocDelay <= 0:
-                    # Do allocation (assume this is instantaneous).
-                    alloc = allocBytes()
-                    cs.H_a += alloc
+    def transition(self):
+        # Perform any instantaneous state changes. All Ps are at the
+        # same time.
+        cs = self.cycleSim
 
-                    # Compute assist work for this allocation
-                    A = W_e/(H_g - H_T) * alloc
-                    # Steal assist work if we can
-                    steal = min(A, cs.bgCredit)
-                    cs.bgCredit -= steal
-                    A -= steal
-                    # Compute the time it will take to do A assist work
-                    self.assistTime = A * pointerScanSecs
-                    # Switch to assisting
-                    self.state = 'assisting'
-            elif self.state == 'assisting':
-                step = min(left, self.assistTime)
-                self.assistTime -= step
-                left -= step
+        if self.state == 'running' and self.runTime == 0:
+            # Do allocation (assume this is instantaneous).
+            alloc = allocBytes()
+            cs.H_a += alloc
 
-                # Perform assist work for step seconds
-                cs.W_done += step / pointerScanSecs
-                cs.gcTime_assist += step
+            # Compute assist work for this allocation
+            A = W_e/(H_g - H_T) * alloc
+            # Steal assist work if we can
+            steal = min(A, cs.bgCredit)
+            cs.bgCredit -= steal
+            A -= steal
+            # Compute the time it will take to do A assist work
+            self.assistTime = A * pointerScanSecs
+            # Switch to assisting
+            self.state = 'assisting'
 
-                if self.assistTime <= 0:
-                    # Switch back to running and set up for the next
-                    # allocation.
-                    self.state = 'running'
-                    self.allocDelay = allocPeriodSecs()
+        if self.state == 'assisting' and self.assistTime == 0:
+            # Switch back to running
+            self.state = 'running'
+            self.runTime = allocPeriodSecs()
+
+        preemptible = self.state in ('running', 'bggc', 'idlegc')
+        if preemptible and self.preemptTime <= 0:
+            self.preemptTime = schedQuantum
+
+            # If this P and all lower-numbered Ps were to run
+            # background GC for the next quantum, would u_a <= u_g at
+            # the end of the quantum?
+            u_a_if_bg = (cs.gcTime + (self.i + 1) * schedQuantum) / (cs.now + gomaxprocs * schedQuantum)
+            if u_a_if_bg <= u_g:
+                # Run background GC for the next quantum
+                self.state = 'bggc'
+                return
+
+            # Does the mutator want to run?
+            if numpy.random.random() <= u_mut:
+                self.state = 'running'
+                return
+
+            # Otherwise, run idle GC next quantum
+            self.state = 'idlegc'
 
 print("# h_g=%g w_true=%g pointerScanTime=%gns allocPeriod=%gns u_mut=%g" % (h_g, args.w_true.mu, pointerScanSecs/NS, args.allocPeriodNS.mu, u_mut))
 print("n\tH_m(n-1)\tH_t\tH_a\tH_g\tW_a\tW_e\tw\tu_a\tu_g\tu_assist\tu_bg\tu_idle")
