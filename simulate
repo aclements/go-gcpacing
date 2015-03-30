@@ -273,7 +273,7 @@ class PSim:
             self.state = 'idlegc'
 
 print("# h_g=%g w_true=%g pointerScanTime=%gns allocPeriod=%gns u_mut=%g" % (h_g, args.w_true.mu, pointerScanSecs/NS, args.allocPeriodNS.mu, u_mut))
-print("n\tH_m(n-1)\tH_t\tH_a\tH_g\tW_a\tW_e\tw\tu_a\tu_g\tu_assist\tu_bg\tu_idle")
+print("n\tH_m(n-1)\tH_T\tH_a\tH_g\tW_a\tW_e\tw\tu_a\tu_g\tu_assist\tu_bg\tu_idle")
 for n in range(20):
     H_T = H_m_prev * (1 + h_T)
     H_g = H_m_prev * (1 + h_g)

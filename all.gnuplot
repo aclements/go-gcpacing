@@ -94,7 +94,7 @@ do for [pointerScanNS in "1 10 20"] {
         # if (mp_nplot%mp_ncols != 0) { set ytics format "" (0, 1*GB, 2*GB, 3*GB) }
 
         # plot 'all.dat' index idx using 'H_m(n-1)', \
-        #      '' index idx using 'H_t', \
+        #      '' index idx using 'H_T', \
         #      '' index idx using 'H_a', \
         #      '' index idx using 'H_g'
 
@@ -106,7 +106,7 @@ do for [pointerScanNS in "1 10 20"] {
 
         plot 'all.dat' index idx using (column('H_a')/column('H_m(n-1)')-1) title "actual", \
              '' index idx using (column('H_g')/column('H_m(n-1)')-1) title "goal", \
-             '' index idx using (column('H_t')/column('H_m(n-1)')-1) title "trigger"
+             '' index idx using (column('H_T')/column('H_m(n-1)')-1) title "trigger"
 
 
         eval mpNextBot

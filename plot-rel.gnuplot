@@ -9,7 +9,7 @@ set ylabel 'Heap ratio'
 set yrange [0:1.3]
 plot filename using (column('H_a')/column('H_m(n-1)')-1) title 'h_a', \
      '' using (column('H_g')/column('H_m(n-1)')-1) title 'h_g', \
-     '' using (column('H_t')/column('H_m(n-1)')-1) title 'h_t'
+     '' using (column('H_T')/column('H_m(n-1)')-1) title 'h_t'
 set xlabel 'GC cycle'
 set xtics format '% g'
 set ylabel 'CPU'
