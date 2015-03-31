@@ -6,10 +6,10 @@ set style data lines
 set xlabel ''
 set xtics format ''
 set ylabel 'Heap size'
-plot filename using 1:'H_m(n-1)', \
+plot filename using 1:'H_a' lt 1, \
+     '' using 1:'H_g' lt 2, \
      '' using 1:'H_T', \
-     '' using 1:'H_a', \
-     '' using 1:'H_g', \
+     '' using 1:'H_m(n-1)', \
      '' using 1:'W_a', \
      '' using 1:'W_e'
 set xlabel 'GC cycle'
