@@ -119,9 +119,9 @@ do for [pointerScanNS in "1 10 20"] {
         set ytics format "% g" ("0%%" 0, "100%%" 1)
         if (mp_nplot%mp_ncols != 0) { set ytics format "" (0, 1) }
 
-        plot 'all.dat' index idx using 1:(column('u_assist')+column('u_bg')+column('u_idle')) title 'u_idle' w filledcurves x1, \
-             '' index idx using 1:(column('u_assist')+column('u_bg')) title 'u_bg' w filledcurves x1, \
-             '' index idx using 1:(column('u_assist')) title 'u_assist' w filledcurves x1, \
+        plot 'all.dat' index idx using 1:(column('u_bg')+column('u_assist')+column('u_idle')) title 'u_idle' w filledcurves x1 lt 2, \
+             '' index idx using 1:(column('u_bg')+column('u_assist')) title 'u_assist' w filledcurves x1 lt 1, \
+             '' index idx using 1:(column('u_bg')) title 'u_bg' w filledcurves x1 lt 3, \
              '' index idx using 1:'u_a' lt 1, \
              '' index idx using 1:'u_g' lt 2
     }

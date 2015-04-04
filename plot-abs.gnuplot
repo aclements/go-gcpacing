@@ -16,9 +16,9 @@ set xlabel 'GC cycle'
 set xtics format '% g'
 set ylabel 'CPU'
 set yrange [0:1]
-plot [*:*] filename using 1:(column('u_assist')+column('u_bg')+column('u_idle')) title 'u_idle' w filledcurves y1=0, \
-     '' using 1:(column('u_assist')+column('u_bg')) title 'u_bg' w filledcurves y1=0, \
-     '' using 1:(column('u_assist')) title 'u_assist' w filledcurves y1=0, \
+plot [*:*] filename using 1:(column('u_bg')+column('u_assist')+column('u_idle')) title 'u_idle' w filledcurves y1=0 lt 2, \
+     '' using 1:(column('u_bg')+column('u_assist')) title 'u_assist' w filledcurves y1=0 lt 1, \
+     '' using 1:(column('u_bg')) title 'u_bg' w filledcurves y1=0 lt 3, \
      '' using 1:'u_a' lt 1, \
      '' using 1:'u_g' lt 2
 unset multiplot
