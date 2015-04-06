@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+# -*- python -*-
+
+# Copyright 2015 The Go Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style
+# license that can be found in the LICENSE file.
+
+import sys
+import argparse
+
+import gctrace
+
+def main():
+    argp = argparse.ArgumentParser(
+        description='''Convert the output of GODEBUG=gctrace=1 to the same
+        table format emitted by the simulator. This table can be used with
+        the plotting scripts scripts in this directory.''')
+    argp.add_argument('--GOGC', metavar='PCT', type=float, default=100,
+                      help='GOGC setting for this trace (default %(default)s)')
+    argp.add_argument('trace', nargs='?', type=argparse.FileType(),
+                      default=sys.stdin,
+                      help='gctrace file to read')
+    args = argp.parse_args()
+
+    trace = list(gctrace.parse(args.trace, GOGC=args.GOGC))
+
+    print('n\tH_m(n-1)\tH_T\tH_a\tH_g\tu_a\tu_g\tu_assist\tu_bg\tu_idle')
+
+    # Fake original H_m the same way the runtime does
+    H_m_prev = int(gctrace.heapMinimum / (1 + args.GOGC/100))
+
+    for rec in trace:
+        cpu = sum(rec.clocksCon) * rec.gomaxprocs
+        if cpu == 0:
+            # Avoid dividing by zero
+            u_a = u_assist = u_bg = u_idle = 0
+        else:
+            u_a = sum(rec.cpusCon) / cpu
+            u_assist, u_bg, u_idle \
+                = rec.cpu_assist / cpu, rec.cpu_bg / cpu, rec.cpu_idle / cpu
+        u_g = 0.25
+        print(rec.n,
+              H_m_prev, rec.H_T, rec.H_a, rec.H_g,
+              u_a, u_g, u_assist, u_bg, u_idle,
+              sep='\t')
+        H_m_prev = rec.H_m
+
+if __name__ == '__main__':
+    main()
