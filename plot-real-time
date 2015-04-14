@@ -54,7 +54,7 @@ class AxisRange:
 
 def plotTrace(trace, args):
     # XXX Use a DataFrame?
-    ts, util = [], []
+    ts, u_bg, u_assist, u_idle = [], [], [], []
     H_a_ts, H_a = [], []
     H_level_ts, H_T, H_g = [], [], []
     last_end = 0
@@ -69,21 +69,38 @@ def plotTrace(trace, args):
 
         now = rec.start
         ts.append(now)
-        util.append(0)
+        u_bg.append(0)
+        u_assist.append(0)
+        u_idle.append(0)
         for i, (clock, cpu) in enumerate(zip(rec.clocks, rec.cpus)):
             ts.append(now)
             if i % 2 == 0:
                 # Avoid issues from milliseconds rounding in trace
-                util.append(1)
+                u_bg.append(1)
+                u_assist.append(0)
+                u_idle.append(0)
             elif clock > 0:
-                util.append(cpu / clock / rec.gomaxprocs)
+                if i == rec.markPhase:
+                    u_bg.append(rec.cpu_bg / clock / rec.gomaxprocs)
+                    u_assist.append(rec.cpu_assist / clock / rec.gomaxprocs)
+                    u_idle.append(rec.cpu_idle / clock / rec.gomaxprocs)
+                else:
+                    u_bg.append(cpu / clock / rec.gomaxprocs)
+                    u_assist.append(0)
+                    u_idle.append(0)
             else:
-                util.append(0)
+                u_bg.append(0)
+                u_assist.append(0)
+                u_idle.append(0)
             now += clock
             ts.append(now)
-            util.append(util[-1])
+            u_bg.append(u_bg[-1])
+            u_assist.append(u_assist[-1])
+            u_idle.append(u_idle[-1])
         ts.append(now)
-        util.append(0)
+        u_bg.append(0)
+        u_assist.append(0)
+        u_idle.append(0)
 
         H_level_ts.extend([np.nan, last_end, rec.end])
         H_T.extend([np.nan, rec.H_T, rec.H_T])
@@ -97,9 +114,21 @@ def plotTrace(trace, args):
 
     ax1.xaxis.set_major_formatter(tickerSec)
     ax1.set_ylabel('GC CPU utilization')
-    ax1.fill_between(ts, util, alpha=0.5)
-    ax1.fill_between(ts, util, where=[u>=1 for u in util])
-    ax1.plot(ts, util)
+    palette = sns.color_palette()
+    bot = [0] * len(ts)
+    patches = []
+    for label, layer, color in [('Background', u_bg, palette[0]),
+                                ('Assist', u_assist, palette[2]),
+                                ('Idle', u_idle, palette[1])]:
+        top = [b+x for b, x in zip(bot, layer)]
+        ax1.fill_between(ts, bot, top, alpha=0.5, facecolor=color, lw=0)
+        patch = plt.Rectangle((0, 0), 0, 0, facecolor=color, alpha=0.5)
+        patches.append(patch)
+        bot = top
+    ax1.legend(reversed(patches),
+               reversed(['Background', 'Assist', 'Idle']), loc='upper right')
+    ax1.fill_between(ts, 1, where=[u>=1 for u in u_bg])
+    ax1.plot(ts, [b+a for b, a in zip(u_bg, u_assist)])
 
     ax2.yaxis.set_major_formatter(tickerBytes)
     ax2.set_ylabel('Live heap size')
