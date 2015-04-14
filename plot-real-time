@@ -77,7 +77,7 @@ def plotTrace(trace, args):
     if trace != sys.stdin:
         ax1.set_title(os.path.basename(trace.name))
 
-    ax1.xaxis.set_major_formatter(tickerNS)
+    ax1.xaxis.set_major_formatter(tickerSec)
     ax1.set_ylabel('GC CPU utilization')
     ax1.fill_between(ts, util, alpha=0.5)
     ax1.fill_between(ts, util, where=[u>=1 for u in util])
@@ -96,21 +96,22 @@ def plotTrace(trace, args):
         axis.set_label_coords(-0.1, 0.5)
     fig.tight_layout()
 
-def prettyNS(ns):
-    if ns == 0:
+def prettySec(x):
+    if x == 0:
         return '0s'
     neg = ''
-    if ns < 0:
+    if x < 0:
         neg = '-'
-        ns = -ns
-    units = ('ns', '\u00B5s', 'ms', 's')
-    scale = 0
-    while ns >= 1000 and scale < len(units):
-        ns /= 1000
-        scale += 1
-    s = ('%.3f' % ns).rstrip('0').rstrip('.')
-    return neg + s + units[scale]
-tickerNS = ticker.FuncFormatter(lambda x, pos: prettyNS(x))
+        x = -x
+    units = (('ns', 1e-9), ('\u00B5s', 1e-6), ('ms', 1e-3), ('s', 1))
+    unit = units[0]
+    for u in units:
+        if u[1] > x:
+            break
+        unit = u
+    s = ('%.3f' % (x / unit[1])).rstrip('0').rstrip('.')
+    return neg + s + unit[0]
+tickerSec = ticker.FuncFormatter(lambda x, pos: prettySec(x))
 
 def prettyBytes(x):
     if x == 0:

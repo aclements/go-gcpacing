@@ -69,10 +69,10 @@ def _num(x):
         return float(x)
 
 def _ms(x):
-    return _num(x) * 1e6
+    return _num(x) / 1e3
 
 def _sec(x):
-    return _num(x) * 1e9
+    return _num(x)
 
 class Rec:
     def __init__(self, dct):
