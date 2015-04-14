@@ -6,6 +6,7 @@
 # license that can be found in the LICENSE file.
 
 import sys
+import os
 import argparse
 
 import numpy as np
@@ -24,17 +25,22 @@ def main():
         the output of GODEBUG=gctrace=1.''')
     argp.add_argument('--GOGC', metavar='PCT', type=float, default=100,
                       help='GOGC setting for this trace (default %(default)s)')
-    argp.add_argument('trace', nargs='?', type=argparse.FileType(),
-                      default=sys.stdin,
+    argp.add_argument('trace', nargs='*', type=argparse.FileType(),
+                      default=[sys.stdin],
                       help='gctrace file to read')
     args = argp.parse_args()
 
+    for trace in args.trace:
+        plotTrace(trace, args)
+    plt.show()
+
+def plotTrace(trace, args):
     # XXX Use a DataFrame?
     ts, util = [], []
     H_a_ts, H_a = [], []
     H_level_ts, H_T, H_g = [], [], []
     last_end = 0
-    for rec in gctrace.parse(args.trace, GOGC=args.GOGC, omit_forced=False):
+    for rec in gctrace.parse(trace, GOGC=args.GOGC, omit_forced=False):
         # Always record heap actual
         H_a_ts.extend([rec.start, rec.end, rec.end])
         H_a.extend([rec.H_T, rec.H_a, rec.H_m])
@@ -68,6 +74,9 @@ def main():
 
     fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True)
 
+    if trace != sys.stdin:
+        ax1.set_title(os.path.basename(trace.name))
+
     ax1.xaxis.set_major_formatter(tickerNS)
     ax1.set_ylabel('GC CPU utilization')
     ax1.fill_between(ts, util, alpha=0.5)
@@ -86,7 +95,6 @@ def main():
         axis.zoom(-0.5)
         axis.set_label_coords(-0.1, 0.5)
     fig.tight_layout()
-    plt.show()
 
 def prettyNS(ns):
     if ns == 0:
