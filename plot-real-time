@@ -71,6 +71,7 @@ def main():
     ax1.xaxis.set_major_formatter(tickerNS)
     ax1.set_ylabel('GC CPU utilization')
     ax1.fill_between(ts, util, alpha=0.5)
+    ax1.fill_between(ts, util, where=[u>=1 for u in util])
     ax1.plot(ts, util)
 
     ax2.yaxis.set_major_formatter(tickerBytes)
