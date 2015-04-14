@@ -25,6 +25,8 @@ def main():
         the output of GODEBUG=gctrace=1.''')
     argp.add_argument('--GOGC', metavar='PCT', type=float, default=100,
                       help='GOGC setting for this trace (default %(default)s)')
+    argp.add_argument('--xrange', metavar='[LO]:[HI]', type=AxisRange.arg,
+                      default=AxisRange(), help='X axis range in seconds')
     argp.add_argument('trace', nargs='*', type=argparse.FileType(),
                       default=[sys.stdin],
                       help='gctrace file to read')
@@ -33,6 +35,22 @@ def main():
     for trace in args.trace:
         plotTrace(trace, args)
     plt.show()
+
+class AxisRange:
+    def __init__(self, lo=None, hi=None):
+        self.lo, self.hi = lo, hi
+
+    @classmethod
+    def arg(cls, s):
+        if s.count(':') != 1:
+            raise argparse.ArgumentTypeError('range must be [lo]:[hi]')
+        lo, hi = s.split(':')
+        try:
+            lo = float(lo) if lo.strip() else None
+            hi = float(hi) if hi.strip() else None
+        except ValueError as e:
+            raise argparse.ArgumentTypeError(str(e))
+        return cls(lo, hi)
 
 def plotTrace(trace, args):
     # XXX Use a DataFrame?
@@ -91,6 +109,7 @@ def plotTrace(trace, args):
     ax2.legend([H_g_line, H_T_line], ['Goal', 'Trigger'], loc='best')
 
 #    sns.despine()
+    ax1.set_xlim(left=args.xrange.lo, right=args.xrange.hi)
     for axis in (ax1.yaxis, ax2.yaxis):
         axis.zoom(-0.5)
         axis.set_label_coords(-0.1, 0.5)
