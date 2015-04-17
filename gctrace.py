@@ -32,6 +32,7 @@ def parse(fp, GOGC=None, omit_forced=True):
             elif k == 'cpus':
                 phases = v.split('+')
                 scan = phases[3]
+                d['markPhase'] = 3
                 if '/' in scan:
                     d['cpu_assist'], d['cpu_bg'], d['cpu_idle'] \
                         = map(_ms, scan.split('/'))
