@@ -36,7 +36,7 @@ def parse(fp, GOGC=None, omit_forced=True):
                 if '/' in scan:
                     d['cpu_assist'], d['cpu_bg'], d['cpu_idle'] \
                         = map(_ms, scan.split('/'))
-                    phases[3] = (d['cpu_assist'] + d['cpu_bg']) / 1e6
+                    phases[3] = (d['cpu_assist'] + d['cpu_bg']) * 1e3
                 else:
                     d['cpu_bg'] = _ms(scan)
                     d['cpu_assist'] = d['cpu_idle'] = 0
