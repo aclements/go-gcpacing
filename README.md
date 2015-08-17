@@ -18,17 +18,3 @@ controller. The results are noisy as a result of Gaussian noise
 injected into various parameters by the simulator.
 
 ![Simulation results](/all.png)
-
-plot-real-time
---------------
-
-The plot-real-time script depends on
-[matplotlib](http://matplotlib.org/) and
-[Seaborn](http://stanford.edu/~mwaskom/software/seaborn/). On Debian
-and Ubuntu you can install these with
-
-    apt-get install python3-matplotlib python3-scipy python3-pandas
-    pip3 install seaborn
-
-For general installation instructions, see [installing
-Seaborn](http://stanford.edu/~mwaskom/software/seaborn/installing.html).
