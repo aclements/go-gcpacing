@@ -62,6 +62,11 @@ def parse(fp, GOGC=None, omit_forced=True):
                     d[k] = v
                 continue
 
+            m = re.match(r'([0-9]+) MB goal', part)
+            if m:
+                d['H_g'] = int(m.group(1)) << 20
+                continue
+
             m = re.match(r'([0-9]+) P', part)
             if m:
                 d['gomaxprocs'] = int(m.group(1))
@@ -71,12 +76,13 @@ def parse(fp, GOGC=None, omit_forced=True):
 
         # Compute derived fields
         d['start'] = d['end'] - sum(d['clocks'])
-        if GOGC is not None:
+        if GOGC is not None and 'H_g' not in d:
+            # Compute H_g ourselves
             if H_m_prev is None:
                 d['H_g'] = heapMinimum
             else:
                 d['H_g'] = int(H_m_prev * (1 + GOGC/100))
-            H_m_prev = d['H_m']
+        H_m_prev = d['H_m']
         if not omit_forced or not d['forced']:
             yield Rec(d)
 
